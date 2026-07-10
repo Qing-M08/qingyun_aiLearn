@@ -1,0 +1,98 @@
+/* ===== CSS Variables (Design Tokens) ===== */
+:root {
+  --color-primary: #F59E0B;
+  --color-primary-hover: #D97706;
+  --color-primary-active: #B45309;
+  --color-primary-light: #FEF3C7;
+  --color-primary-border: #FCD34D;
+  --color-success: #10B981;
+  --color-success-bg: #D1FAE5;
+  --color-warning: #F59E0B;
+  --color-warning-bg: #FEF3C7;
+  --color-error: #EF4444;
+  --color-error-bg: #FEE2E2;
+  --color-info: #3B82F6;
+  --color-text-primary: #1F2937;
+  --color-text-secondary: #6B7280;
+  --color-text-tertiary: #9CA3AF;
+  --color-text-inverse: #FFFFFF;
+  --color-bg-app: #F5F5F7;
+  --color-bg-page: #FFFFFF;
+  --color-bg-card: #FFFFFF;
+  --color-bg-elevated: #FFFFFF;
+  --color-bg-input: #F5F5F7;
+  --color-bg-sidebar: #FAFAFA;
+  --color-bg-hover: rgba(0,0,0,0.04);
+  --color-bg-selected: #FEF3C7;
+  --color-border: #E5E7EB;
+  --color-border-light: #F3F4F6;
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "SF Mono", Menlo, monospace;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.04), 0 2px 4px rgba(0,0,0,0.06);
+  --shadow-lg: 0 10px 15px rgba(0,0,0,0.06), 0 4px 6px rgba(0,0,0,0.04);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --transition: 200ms ease;
+  --sidebar-w: 220px;
+  --sidebar-collapsed: 56px;
+  --topbar-h: 52px;
+}
+
+[data-theme="dark"] {
+  --color-primary: #FBBF24;
+  --color-primary-hover: #F59E0B;
+  --color-primary-active: #D97706;
+  --color-primary-light: rgba(251,191,36,0.12);
+  --color-primary-border: rgba(251,191,36,0.3);
+  --color-success: #34D399;
+  --color-success-bg: rgba(52,211,153,0.12);
+  --color-warning: #FBBF24;
+  --color-warning-bg: rgba(251,191,36,0.12);
+  --color-error: #F87171;
+  --color-error-bg: rgba(248,113,113,0.12);
+  --color-text-primary: #F9FAFB;
+  --color-text-secondary: #9CA3AF;
+  --color-text-tertiary: #6B7280;
+  --color-text-inverse: #1F2937;
+  --color-bg-app: #0D0D0D;
+  --color-bg-page: #1C1C1E;
+  --color-bg-card: #2C2C2E;
+  --color-bg-elevated: #3A3A3C;
+  --color-bg-input: #3A3A3C;
+  --color-bg-sidebar: #1C1C1E;
+  --color-bg-hover: rgba(255,255,255,0.06);
+  --color-bg-selected: rgba(251,191,36,0.15);
+  --color-border: #3A3A3C;
+  --color-border-light: #2C2C2E;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.2), 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.3), 0 2px 4px rgba(0,0,0,0.2);
+  --shadow-lg: 0 10px 15px rgba(0,0,0,0.4), 0 4px 6px rgba(0,0,0,0.2);
+}
+
+/* ===== Reset ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; }
+body {
+  font-family: var(--font-family);
+  background: var(--color-bg-app);
+  color: var(--color-text-primary);
+  overflow: hidden;
+  height: 100vh;
+  transition: background var(--transition), color var(--transition);
+}
+button { font-family: inherit; cursor: pointer; border: none; background: none; }
+input, textarea { font-family: inherit; }
+a { text-decoration: none; color: inherit; }
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-text-tertiary); }
+
+/* ===== Layout ===== */
+#root { width: 100%; height: 100vh; }
+.app { display: flex; height: 100vh; }
