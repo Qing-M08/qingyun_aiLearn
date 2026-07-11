@@ -23,8 +23,10 @@ async def lifespan(app: FastAPI):
     logger.info("application_starting", app_name=settings.APP_NAME)
     # 初始化Meilisearch索引
     try:
-        from app.services.search_service import init_meilisearch_indexes
+        from app.services.search_service import init_meilisearch_indexes, sync_all_to_meilisearch
         await init_meilisearch_indexes()
+        # 启动时全量同步一次，确保索引与数据库一致
+        await sync_all_to_meilisearch()
     except Exception as e:
         logger.warning("meilisearch_init_failed", error=str(e))
     yield

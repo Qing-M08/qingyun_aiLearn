@@ -1,3 +1,5 @@
+from app.models.agent_message import AgentMessage
+from app.models.agent_session import AgentSession
 from app.models.auth import RefreshToken
 from app.models.knowledge import KnowledgeEdge, KnowledgeNode, UserKnowledgeMastery
 from app.models.learning import LearningRecord, LearningRoute, LearningRouteStep, Lecture, QAMessage, QASession
@@ -9,6 +11,8 @@ from app.models.tag import NoteTag, Tag
 from app.models.user import PersonalHabitProfile, User, UserProfile
 
 __all__ = [
+    "AgentSession",
+    "AgentMessage",
     "User",
     "UserProfile",
     "PersonalHabitProfile",

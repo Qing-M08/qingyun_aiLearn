@@ -19,6 +19,41 @@ logger = structlog.get_logger()
 
 class ReviewService:
 
+    @classmethod
+    def as_tools(cls) -> list:
+        """暴露复习相关工具供 Agent 调用"""
+        from app.services.agent.tool_schemas import ToolParameter, ToolSchema
+        return [
+            ToolSchema(
+                name="get_review_status",
+                display_name="查看复习状态",
+                description="获取用户当前待复习的知识点列表和复习统计",
+                parameters={
+                    "limit": ToolParameter(type="integer", description="返回数量", required=False, default=5),
+                },
+                category="read",
+                module="review",
+                icon="redo",
+            ),
+            ToolSchema(
+                name="schedule_review",
+                display_name="创建复习计划",
+                description="为指定知识点创建复习计划",
+                parameters={
+                    "node_name": ToolParameter(type="string", description="知识点名称"),
+                    "review_type": ToolParameter(
+                        type="string",
+                        description="复习类型",
+                        enum=["flashcard", "quiz", "explanation"],
+                        default="flashcard",
+                    ),
+                },
+                category="write",
+                module="review",
+                icon="schedule",
+            ),
+        ]
+
     # ==================== SM-2 间隔重复算法 ====================
 
     @staticmethod

@@ -21,6 +21,24 @@ logger = structlog.get_logger()
 
 class QAService:
 
+    @classmethod
+    def as_tools(cls) -> list:
+        """暴露答疑相关工具供 Agent 调用"""
+        from app.services.agent.tool_schemas import ToolParameter, ToolSchema
+        return [
+            ToolSchema(
+                name="get_qa_history",
+                display_name="查看答疑历史",
+                description="获取用户最近答疑会话的摘要",
+                parameters={
+                    "limit": ToolParameter(type="integer", description="返回数量", required=False, default=3),
+                },
+                category="read",
+                module="qa",
+                icon="message",
+            ),
+        ]
+
     # ==================== 会话管理 ====================
 
     @staticmethod

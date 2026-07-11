@@ -82,6 +82,17 @@ async def get_learning_path(
     return await KnowledgeService.get_learning_path(db, node_id, target_id)
 
 
+@router.get("/nodes/{node_id}/relation")
+async def get_node_relation(
+    node_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取知识节点的关联内容（前置/后续知识、关联笔记、关联路线）"""
+    relation = await KnowledgeService.get_node_relation(db, str(node_id), str(current_user.id))
+    return {"data": relation}
+
+
 @router.post("/edges", response_model=KnowledgeEdgeSchema, status_code=201)
 async def create_edge(
     data: KnowledgeEdgeCreate,

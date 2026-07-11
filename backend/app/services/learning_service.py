@@ -24,6 +24,48 @@ logger = structlog.get_logger()
 
 class LearningService:
 
+    @classmethod
+    def as_tools(cls) -> list:
+        """暴露学习相关工具供 Agent 调用"""
+        from app.services.agent.tool_schemas import ToolParameter, ToolSchema
+        return [
+            ToolSchema(
+                name="search_knowledge",
+                display_name="搜索知识图谱",
+                description="按关键词搜索知识图谱中的知识点，返回名称、学科和描述",
+                parameters={
+                    "query": ToolParameter(type="string", description="搜索关键词"),
+                    "subject": ToolParameter(type="string", description="学科筛选", required=False),
+                    "limit": ToolParameter(type="integer", description="返回数量", required=False, default=5),
+                },
+                category="read",
+                module="learning",
+                icon="apartment",
+            ),
+            ToolSchema(
+                name="get_mastery",
+                display_name="查询掌握度",
+                description="查询用户对指定知识点的掌握度分数",
+                parameters={
+                    "node_name": ToolParameter(type="string", description="知识点名称"),
+                },
+                category="read",
+                module="learning",
+                icon="dashboard",
+            ),
+            ToolSchema(
+                name="get_route_progress",
+                display_name="查看学习路线进度",
+                description="获取用户当前学习路线的进度概况",
+                parameters={
+                    "topic": ToolParameter(type="string", description="路线主题（可选，不传则返回所有进行中路线）", required=False),
+                },
+                category="read",
+                module="learning",
+                icon="flag",
+            ),
+        ]
+
     # ==================== 学习路线生成（升级） ====================
 
     @staticmethod
@@ -131,6 +173,8 @@ class LearningService:
                     )
         except Exception as e:
             logger.warning("graph_query_fallback", error=str(e))
+            # Cypher查询失败会污染PostgreSQL事务状态，必须先回滚才能执行后续查询
+            await db.rollback()
             # 降级：从关系表查询
             nodes_result = await db.execute(
                 select(KnowledgeNode).where(KnowledgeNode.subject == subject).limit(30)
@@ -237,6 +281,8 @@ class LearningService:
 
         except Exception as e:
             logger.error("route_generation_failed", route_id=str(route_id), error=str(e))
+            # 事务可能已被污染，必须先回滚才能执行更新
+            await db.rollback()
             # 标记为失败
             result = await db.execute(
                 select(LearningRoute).where(LearningRoute.id == route_id)
@@ -244,6 +290,7 @@ class LearningService:
             route = result.scalar_one_or_none()
             if route:
                 route.status = "failed"
+                route.metadata_ = {**(route.metadata_ or {}), "error": str(e)}
                 await db.commit()
             raise
 
@@ -594,6 +641,7 @@ class LearningService:
                         prereqs_text = "、".join(prereq_names)
             except Exception as e:
                 logger.warning("prereq_lookup_failed", error=str(e))
+                await db.rollback()
 
         # 5. 获取用户水平
         user_level = "中级"
@@ -789,7 +837,7 @@ class LearningService:
         db: AsyncSession, route_id: uuid.UUID, user_id: uuid.UUID
     ) -> bool:
         """
-        删除单条学习路线（级联删除 steps）。
+        删除单条学习路线（级联删除 steps + 清理关联讲义）。
         返回 True 表示删除成功，False 表示路线不存在。
         """
         result = await db.execute(
@@ -801,6 +849,8 @@ class LearningService:
         route = result.scalar_one_or_none()
         if not route:
             return False
+        # 清理关联讲义及其 Meilisearch 索引
+        await LearningService._delete_route_lectures(db, route_id)
         await db.delete(route)
         await db.commit()
         logger.info("route_deleted", route_id=str(route_id), user_id=str(user_id))
@@ -828,6 +878,8 @@ class LearningService:
             if not route:
                 failed_ids.append({"id": rid, "reason": "ROUTE_NOT_FOUND"})
                 continue
+            # 清理关联讲义
+            await LearningService._delete_route_lectures(db, rid)
             await db.delete(route)
             deleted_count += 1
 
@@ -839,3 +891,27 @@ class LearningService:
             user_id=str(user_id),
         )
         return {"deleted_count": deleted_count, "failed_ids": failed_ids}
+
+    @staticmethod
+    async def _delete_route_lectures(db: AsyncSession, route_id: uuid.UUID):
+        """删除路线关联的所有讲义及其 Meilisearch 索引"""
+        try:
+            lecture_result = await db.execute(
+                select(Lecture).where(Lecture.route_id == route_id)
+            )
+            lectures = lecture_result.scalars().all()
+            for lecture in lectures:
+                try:
+                    from app.services.search_service import get_meilisearch_client
+                    client = get_meilisearch_client()
+                    client.index("lectures").delete_document(str(lecture.id))
+                except Exception as e:
+                    logger.warning("meilisearch_lecture_delete_failed",
+                                 lecture_id=str(lecture.id), error=str(e))
+                await db.delete(lecture)
+            if lectures:
+                logger.info("route_lectures_deleted",
+                           route_id=str(route_id), count=len(lectures))
+        except Exception as e:
+            logger.warning("route_lecture_cleanup_failed",
+                         route_id=str(route_id), error=str(e))

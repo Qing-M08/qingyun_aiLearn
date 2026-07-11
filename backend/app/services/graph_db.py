@@ -154,7 +154,7 @@ class GraphDB:
     async def get_prerequisites(db: AsyncSession, node_id: str) -> list[dict]:
         """获取某节点的所有前置依赖节点"""
         cypher = (
-            f"MATCH (prereq:KnowledgePoint)-[:PREREQUISITE_OF]->"
+            f"MATCH (prereq:KnowledgePoint)-[::PREREQUISITE_OF]->"
             f"(target:KnowledgePoint {{id: '{node_id}'}}) "
             f"RETURN prereq"
         )
@@ -165,7 +165,7 @@ class GraphDB:
         """获取某节点的所有后续依赖节点"""
         cypher = (
             f"MATCH (source:KnowledgePoint {{id: '{node_id}'}})"
-            f"-[:PREREQUISITE_OF]->(dep:KnowledgePoint) "
+            f"-[::PREREQUISITE_OF]->(dep:KnowledgePoint) "
             f"RETURN dep"
         )
         return await GraphDB.execute_cypher(db, cypher, columns="dep agtype")
@@ -175,7 +175,7 @@ class GraphDB:
         """获取某节点的关联节点"""
         cypher = (
             f"MATCH (source:KnowledgePoint {{id: '{node_id}'}})"
-            f"-[:RELATED_TO]-(related:KnowledgePoint) "
+            f"-[::RELATED_TO]-(related:KnowledgePoint) "
             f"RETURN related"
         )
         return await GraphDB.execute_cypher(db, cypher, columns="related agtype")
@@ -185,7 +185,7 @@ class GraphDB:
         """获取某节点的子知识点"""
         cypher = (
             f"MATCH (parent:KnowledgePoint {{id: '{node_id}'}})"
-            f"<-[:SUBTOPIC_OF]-(child:KnowledgePoint) "
+            f"<-[::SUBTOPIC_OF]-(child:KnowledgePoint) "
             f"RETURN child"
         )
         return await GraphDB.execute_cypher(db, cypher, columns="child agtype")
@@ -222,7 +222,7 @@ class GraphDB:
         """获取某学科的所有节点及其前置依赖关系（用于路线生成）"""
         cypher = (
             f"MATCH (n:KnowledgePoint {{subject: '{subject}'}}) "
-            f"OPTIONAL MATCH (n)-[:PREREQUISITE_OF]->(prereq:KnowledgePoint) "
+            f"OPTIONAL MATCH (n)-[::PREREQUISITE_OF]->(prereq:KnowledgePoint) "
             f"RETURN n, collect(prereq.name) AS prerequisites"
         )
         return await GraphDB.execute_cypher(

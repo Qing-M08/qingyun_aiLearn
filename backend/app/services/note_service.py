@@ -13,7 +13,90 @@ import structlog
 logger = structlog.get_logger()
 
 
+async def _sync_note_to_meilisearch(note: Note):
+    """将笔记同步到 Meilisearch 索引"""
+    try:
+        from app.services.search_service import index_note
+        await index_note({
+            "id": str(note.id),
+            "user_id": str(note.user_id),
+            "title": note.title or "",
+            "content": (note.content or "")[:5000],
+            "subject": note.subject,
+            "word_count": note.word_count or 0,
+            "created_at": note.created_at.isoformat() if note.created_at else "",
+            "updated_at": note.updated_at.isoformat() if note.updated_at else "",
+        })
+    except Exception as e:
+        logger.warning("meilisearch_sync_failed", note_id=str(note.id), error=str(e))
+
+
+async def _delete_note_from_meilisearch(note_id: uuid.UUID):
+    """从 Meilisearch 删除笔记索引"""
+    try:
+        from app.services.search_service import delete_note_index
+        await delete_note_index(str(note_id))
+    except Exception as e:
+        logger.warning("meilisearch_delete_failed", note_id=str(note_id), error=str(e))
+
+
+async def _delete_associated_lectures(db: AsyncSession, note_id: uuid.UUID):
+    """删除与笔记关联的讲义（通过 lecture.note_id）"""
+    try:
+        from sqlalchemy import select
+        from app.models.learning import Lecture
+        result = await db.execute(
+            select(Lecture).where(Lecture.note_id == note_id)
+        )
+        lectures = result.scalars().all()
+        for lecture in lectures:
+            # 从 Meilisearch 删除讲义索引
+            try:
+                from app.services.search_service import get_meilisearch_client
+                client = get_meilisearch_client()
+                client.index("lectures").delete_document(str(lecture.id))
+            except Exception as e:
+                logger.warning("meilisearch_lecture_delete_failed",
+                             lecture_id=str(lecture.id), error=str(e))
+            await db.delete(lecture)
+        if lectures:
+            logger.info("associated_lectures_deleted", note_id=str(note_id), count=len(lectures))
+    except Exception as e:
+        logger.warning("cascade_lecture_delete_failed", note_id=str(note_id), error=str(e))
+
+
 class NoteService:
+
+    @classmethod
+    def as_tools(cls) -> list:
+        """暴露笔记相关工具供 Agent 调用"""
+        from app.services.agent.tool_schemas import ToolParameter, ToolSchema
+        return [
+            ToolSchema(
+                name="search_notes",
+                display_name="搜索笔记",
+                description="按关键词搜索用户的笔记，返回标题和内容摘要",
+                parameters={
+                    "query": ToolParameter(type="string", description="搜索关键词"),
+                    "tag": ToolParameter(type="string", description="按标签筛选", required=False),
+                    "limit": ToolParameter(type="integer", description="返回数量", required=False, default=5),
+                },
+                category="read",
+                module="note",
+                icon="file-text",
+            ),
+            ToolSchema(
+                name="get_note_content",
+                display_name="获取笔记内容",
+                description="获取指定笔记的完整内容",
+                parameters={
+                    "note_id": ToolParameter(type="string", description="笔记 ID"),
+                },
+                category="read",
+                module="note",
+                icon="file-text",
+            ),
+        ]
 
     @staticmethod
     async def create_note(db: AsyncSession, user_id: uuid.UUID, **kwargs) -> Note:
@@ -37,7 +120,10 @@ class NoteService:
             .options(selectinload(Note.tags))
             .where(Note.id == note.id)
         )
-        return result.scalar_one()
+        saved_note = result.scalar_one()
+        # 同步到 Meilisearch
+        await _sync_note_to_meilisearch(saved_note)
+        return saved_note
 
     @staticmethod
     async def get_note(db: AsyncSession, note_id: uuid.UUID, user_id: uuid.UUID) -> Note:
@@ -102,6 +188,8 @@ class NoteService:
 
         await db.flush()
         await db.refresh(note)
+        # 同步到 Meilisearch
+        await _sync_note_to_meilisearch(note)
         return note
 
     @staticmethod
@@ -133,8 +221,12 @@ class NoteService:
     @staticmethod
     async def delete_note(db: AsyncSession, note_id: uuid.UUID, user_id: uuid.UUID):
         note = await NoteService.get_note(db, note_id, user_id)
+        # 级联删除关联讲义（通过 lecture.note_id 查找）
+        await _delete_associated_lectures(db, note_id)
         await db.delete(note)
         await db.flush()
+        # 从 Meilisearch 删除
+        await _delete_note_from_meilisearch(note_id)
 
     @staticmethod
     async def batch_delete_notes(
@@ -151,10 +243,18 @@ class NoteService:
         # 计算失败的 ID（不存在或不属于当前用户）
         failed_ids = [nid for nid in note_ids if nid not in found_ids]
 
+        # 级联删除关联讲义
+        for nid in found_ids:
+            await _delete_associated_lectures(db, nid)
+
         # 逐条删除（cascade 自动清理关联标签）
         for note in found_notes:
             await db.delete(note)
         await db.flush()
+
+        # 批量从 Meilisearch 删除
+        for note_id in found_ids:
+            await _delete_note_from_meilisearch(note_id)
 
         logger.info(
             "batch_delete_notes",

@@ -4,7 +4,7 @@ MODEL_ROUTING = {
     "long_context": "deepseek-chat",
     "chinese_education": "deepseek-chat",
     "high_precision": "deepseek-chat",
-    "embedding": "bge-m3",
+    "embedding": "bge-small-zh-v1.5",
     "agent_chat": "deepseek-chat",
 }
 

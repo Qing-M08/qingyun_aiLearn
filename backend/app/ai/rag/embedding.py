@@ -1,17 +1,24 @@
-from sentence_transformers import SentenceTransformer
+import math
+import os
+
 import structlog
+
+from app.config import settings
 
 logger = structlog.get_logger()
 
-_embedder: SentenceTransformer | None = None
+_embedder = None
 
 
-def get_embedder() -> SentenceTransformer:
-    """获取全局嵌入模型（懒加载单例）"""
+def get_embedder():
+    """获取全局嵌入模型（懒加载单例，首次调用时才加载模型）"""
     global _embedder
     if _embedder is None:
-        logger.info("loading_embedding_model", model="BAAI/bge-m3")
-        _embedder = SentenceTransformer("BAAI/bge-m3")
+        # 设置 HuggingFace 镜像地址（国内环境）
+        os.environ.setdefault("HF_ENDPOINT", settings.HF_ENDPOINT)
+        logger.info("loading_embedding_model", model="BAAI/bge-small-zh-v1.5")
+        from sentence_transformers import SentenceTransformer
+        _embedder = SentenceTransformer("BAAI/bge-small-zh-v1.5")
         logger.info("embedding_model_loaded")
     return _embedder
 

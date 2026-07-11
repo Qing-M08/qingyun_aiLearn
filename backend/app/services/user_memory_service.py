@@ -12,6 +12,42 @@ from app.services.memory.user_memory import UserMemory
 class UserMemoryService:
     """用户记忆服务 — 业务逻辑层"""
 
+    @classmethod
+    def as_tools(cls) -> list:
+        """暴露记忆相关工具供 Agent 调用"""
+        from app.services.agent.tool_schemas import ToolParameter, ToolSchema
+        return [
+            ToolSchema(
+                name="recall_knowledge",
+                display_name="回忆知识画像",
+                description="按需检索用户的知识画像，获取某主题的详细信息",
+                parameters={
+                    "topic": ToolParameter(type="string", description="主题关键词"),
+                    "depth": ToolParameter(
+                        type="string",
+                        description="检索深度",
+                        enum=["brief", "detailed"],
+                        default="brief",
+                    ),
+                },
+                category="read",
+                module="user_memory",
+                icon="database",
+            ),
+            ToolSchema(
+                name="search_memory",
+                display_name="搜索记忆",
+                description="语义搜索用户的历史记忆和学习记录",
+                parameters={
+                    "query": ToolParameter(type="string", description="搜索描述"),
+                    "top_k": ToolParameter(type="integer", description="返回数量", required=False, default=3),
+                },
+                category="read",
+                module="user_memory",
+                icon="history",
+            ),
+        ]
+
     def __init__(self, db: AsyncSession):
         self.db = db
 

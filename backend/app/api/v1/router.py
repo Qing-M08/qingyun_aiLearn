@@ -18,3 +18,12 @@ api_router.include_router(qa.router)
 # Sprint 7 新增：复习系统
 from app.api.v1 import review
 api_router.include_router(review.router)
+
+# Phase 3 新增：搜索增强
+from app.api.v1 import search
+api_router.include_router(search.router)
+
+# Phase 3 新增：Agent 会话
+from app.api.v1 import agent
+api_router.include_router(agent.router)
+api_router.include_router(agent.ws_router)

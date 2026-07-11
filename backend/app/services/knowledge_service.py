@@ -1,12 +1,14 @@
 import uuid
 from typing import Optional
 
-from sqlalchemy import select, func
+from sqlalchemy import desc, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 import structlog
 
 from app.models.knowledge import KnowledgeNode, KnowledgeEdge, UserKnowledgeMastery
+from app.models.learning import LearningRoute, LearningRouteStep
+from app.models.note import Note
 from app.services.graph_db import GraphDB
 from app.core.exceptions import NotFoundException, ConflictException
 
@@ -150,6 +152,8 @@ class KnowledgeService:
             related_raw = await GraphDB.get_related(db, node_str_id)
         except Exception as e:
             logger.warning("age_query_failed", error=str(e))
+            # Cypher查询失败会污染PostgreSQL事务状态，必须先回滚
+            await db.rollback()
             # 降级到关系表查询
             prereqs_raw, dependents_raw, related_raw = [], [], []
 
@@ -244,6 +248,108 @@ class KnowledgeService:
             logger.error("learning_path_failed", error=str(e))
             return {"path": [], "total_difficulty": 0.0}
 
+    @staticmethod
+    async def get_node_relation(db: AsyncSession, node_id: str, user_id: str) -> dict:
+        """
+        获取知识节点的关联内容视图。
+        返回：中心节点信息 + 前置知识 + 后续知识 + 关联笔记 + 关联路线。
+        """
+        node_uuid = uuid.UUID(node_id)
+        user_uuid = uuid.UUID(user_id)
+
+        # 1. 获取中心节点
+        node = await KnowledgeService.get_node(db, node_uuid)
+
+        # 2. 获取前置知识
+        prereq_query = (
+            select(KnowledgeNode)
+            .join(KnowledgeEdge, KnowledgeEdge.source_id == KnowledgeNode.id)
+            .where(
+                KnowledgeEdge.target_id == node_uuid,
+                KnowledgeEdge.relation_type == "prerequisite",
+            )
+        )
+        prereq_result = await db.execute(prereq_query)
+        prerequisite_nodes = []
+        for node_obj in prereq_result.scalars().all():
+            mastery = await db.execute(
+                select(UserKnowledgeMastery).where(
+                    UserKnowledgeMastery.user_id == user_uuid,
+                    UserKnowledgeMastery.node_id == node_obj.id,
+                )
+            )
+            m = mastery.scalar_one_or_none()
+            prerequisite_nodes.append({
+                "id": str(node_obj.id),
+                "name": node_obj.name,
+                "mastery_score": m.mastery_score if m else None,
+            })
+
+        # 3. 获取后续知识
+        dep_query = (
+            select(KnowledgeNode)
+            .join(KnowledgeEdge, KnowledgeEdge.target_id == KnowledgeNode.id)
+            .where(
+                KnowledgeEdge.source_id == node_uuid,
+                KnowledgeEdge.relation_type == "prerequisite",
+            )
+        )
+        dep_result = await db.execute(dep_query)
+        dependent_nodes = []
+        for node_obj in dep_result.scalars().all():
+            mastery = await db.execute(
+                select(UserKnowledgeMastery).where(
+                    UserKnowledgeMastery.user_id == user_uuid,
+                    UserKnowledgeMastery.node_id == node_obj.id,
+                )
+            )
+            m = mastery.scalar_one_or_none()
+            dependent_nodes.append({
+                "id": str(node_obj.id),
+                "name": node_obj.name,
+                "mastery_score": m.mastery_score if m else None,
+            })
+
+        # 4. 获取关联笔记
+        note_result = await db.execute(
+            select(Note.id, Note.title, Note.updated_at)
+            .where(
+                Note.user_id == user_uuid,
+                Note.title.ilike(f"%{node.name}%"),
+            )
+            .order_by(desc(Note.updated_at))
+            .limit(10)
+        )
+        related_notes = [
+            {"id": str(r.id), "title": r.title, "updated_at": r.updated_at.isoformat() + "Z"}
+            for r in note_result.fetchall()
+        ]
+
+        # 5. 获取关联学习路线
+        route_result = await db.execute(
+            select(LearningRoute.id, LearningRoute.topic, LearningRoute.status)
+            .join(LearningRouteStep, LearningRouteStep.route_id == LearningRoute.id)
+            .where(LearningRouteStep.node_id == node_uuid)
+            .distinct()
+            .limit(10)
+        )
+        related_routes = [
+            {"id": str(r.id), "topic": r.topic, "status": r.status}
+            for r in route_result.fetchall()
+        ]
+
+        return {
+            "center_node": {
+                "id": str(node.id),
+                "name": node.name,
+                "subject": node.subject,
+            },
+            "related_notes": related_notes,
+            "related_routes": related_routes,
+            "prerequisite_nodes": prerequisite_nodes,
+            "dependent_nodes": dependent_nodes,
+        }
+
     # ==================== 学科列表 ====================
 
     @staticmethod
@@ -320,6 +426,106 @@ class KnowledgeService:
         return mastery
 
     # ==================== 初始数据导入 ====================
+
+    @staticmethod
+    async def get_node_relation(self, node_id: str, user_id: str) -> dict:
+        """
+        获取知识节点的关联内容视图。
+        返回：中心节点信息 + 前置知识 + 后续知识 + 关联笔记 + 关联路线。
+        """
+        node_uuid = uuid.UUID(node_id)
+        user_uuid = uuid.UUID(user_id)
+
+        # 1. 获取中心节点
+        node = await self.get_node(self.db, node_uuid)
+
+        # 2. 获取前置知识（通过 knowledge_edges 的 relation_type = 'prerequisite'）
+        prereq_result = await self.db.execute(
+            select(KnowledgeNode, KnowledgeEdge.weight)
+            .join(KnowledgeEdge, KnowledgeEdge.source_id == KnowledgeNode.id)
+            .where(
+                KnowledgeEdge.target_id == node_uuid,
+                KnowledgeEdge.relation_type == "prerequisite",
+            )
+        )
+        prerequisite_nodes = []
+        for node_obj, weight in prereq_result.fetchall():
+            mastery = await self.db.execute(
+                select(UserKnowledgeMastery).where(
+                    UserKnowledgeMastery.user_id == user_uuid,
+                    UserKnowledgeMastery.node_id == node_obj.id,
+                )
+            )
+            m = mastery.scalar_one_or_none()
+            prerequisite_nodes.append({
+                "id": str(node_obj.id),
+                "name": node_obj.name,
+                "mastery_score": m.mastery_score if m else None,
+            })
+
+        # 3. 获取后续知识
+        dep_result = await self.db.execute(
+            select(KnowledgeNode, KnowledgeEdge.weight)
+            .join(KnowledgeEdge, KnowledgeEdge.target_id == KnowledgeNode.id)
+            .where(
+                KnowledgeEdge.source_id == node_uuid,
+                KnowledgeEdge.relation_type == "prerequisite",
+            )
+        )
+        dependent_nodes = []
+        for node_obj, weight in dep_result.fetchall():
+            mastery = await self.db.execute(
+                select(UserKnowledgeMastery).where(
+                    UserKnowledgeMastery.user_id == user_uuid,
+                    UserKnowledgeMastery.node_id == node_obj.id,
+                )
+            )
+            m = mastery.scalar_one_or_none()
+            dependent_nodes.append({
+                "id": str(node_obj.id),
+                "name": node_obj.name,
+                "mastery_score": m.mastery_score if m else None,
+            })
+
+        # 4. 获取关联笔记
+        note_result = await self.db.execute(
+            select(Note.id, Note.title, Note.updated_at)
+            .where(
+                Note.user_id == user_uuid,
+                Note.title.ilike(f"%{node.name}%"),
+            )
+            .order_by(desc(Note.updated_at))
+            .limit(10)
+        )
+        related_notes = [
+            {"id": str(r.id), "title": r.title, "updated_at": r.updated_at.isoformat() + "Z"}
+            for r in note_result.fetchall()
+        ]
+
+        # 5. 获取关联学习路线
+        route_result = await self.db.execute(
+            select(LearningRoute.id, LearningRoute.topic, LearningRoute.status)
+            .join(LearningRouteStep, LearningRouteStep.route_id == LearningRoute.id)
+            .where(LearningRouteStep.node_id == node_uuid)
+            .distinct()
+            .limit(10)
+        )
+        related_routes = [
+            {"id": str(r.id), "topic": r.topic, "status": r.status}
+            for r in route_result.fetchall()
+        ]
+
+        return {
+            "center_node": {
+                "id": str(node.id),
+                "name": node.name,
+                "subject": node.subject,
+            },
+            "related_notes": related_notes,
+            "related_routes": related_routes,
+            "prerequisite_nodes": prerequisite_nodes,
+            "dependent_nodes": dependent_nodes,
+        }
 
     @staticmethod
     async def import_initial_data(db: AsyncSession, data: list[dict]) -> int:

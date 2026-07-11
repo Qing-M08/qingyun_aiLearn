@@ -139,10 +139,9 @@ class LLMClient:
             logger.error("llm_stream_chat_failed", error=str(e), model=model)
             raise
 
-    async def embed(self, texts: list[str], model: str = "bge-m3") -> list[list[float]]:
+    async def embed(self, texts: list[str], model: str = "bge-small-zh-v1.5") -> list[list[float]]:
         """
-        文本嵌入。Phase 1 使用本地模型（sentence-transformers），
-        后续可切换API调用。
+        文本嵌入。使用本地模型（sentence-transformers），懒加载。
         """
         from app.ai.rag.embedding import get_embedder
         embedder = get_embedder()

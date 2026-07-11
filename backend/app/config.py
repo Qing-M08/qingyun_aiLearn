@@ -38,8 +38,9 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str | None = None
 
     # 嵌入模型
-    EMBEDDING_MODEL: str = "bge-m3"
-    EMBEDDING_DIM: int = 1024
+    EMBEDDING_MODEL: str = "bge-small-zh-v1.5"
+    EMBEDDING_DIM: int = 512
+    HF_ENDPOINT: str = "https://hf-mirror.com"
 
     # 搜索API
     BING_SEARCH_API_KEY: str | None = None
@@ -58,10 +59,22 @@ class Settings(BaseSettings):
     AGENT_MAX_STEPS: int = 6
     AGENT_TOKEN_BUDGET: int = 4000
 
+    # Agent 对话历史
+    AGENT_MAX_CONVERSATION_TURNS: int = 10
+    AGENT_AUTO_TITLE: bool = True
+
+    # 搜索增强
+    SEARCH_HIGHLIGHT_ENABLED: bool = True
+    SEARCH_SEMANTIC_WEIGHT: float = 0.3
+    SEARCH_MEILISEARCH_TIMEOUT: int = 5000
+
     # 用户记忆
     MEMORY_HABIT_SUMMARY_MAX_TOKENS: int = 300
     MEMORY_RECALL_MAX_TOKENS: int = 800
     MEMORY_INDEX_CACHE_TTL: int = 3600
+
+    # Cancel Token
+    AGENT_CANCEL_TTL: int = 300
 
 
 settings = Settings()

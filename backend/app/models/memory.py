@@ -17,7 +17,7 @@ class MemoryIndex(Base):
     memory_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     topic: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     summary: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding = mapped_column(Vector(1024), nullable=True)
+    embedding = mapped_column(Vector(512), nullable=True)
     relevance_score: Mapped[float] = mapped_column(Float, default=0.0)
     full_memory_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
