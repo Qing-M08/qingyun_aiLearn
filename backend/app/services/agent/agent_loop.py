@@ -32,7 +32,7 @@ class AgentLoop:
 
     安全控制（同 Phase 1-2）：
       - max_steps: 最大推理轮数（默认 6）
-      - token_budget: 单次对话最大 token 消耗（默认 4000）
+      - token_budget: 单次对话最大新增 token 消耗（仅计 completion_tokens + 工具结果，默认 16000）
       - 写操作限流：category="write" 的工具每轮最多调用 1 次
     """
 
@@ -114,7 +114,7 @@ class AgentLoop:
                     tool_choice="auto",
                     stream=False,
                 )
-                self.total_tokens_used += response.usage.get("total_tokens", 0)
+                self.total_tokens_used += response.usage.get("completion_tokens", 0)
             except Exception as e:
                 logger.error("agent_llm_error", error=str(e))
                 final_answer = "抱歉，AI 服务暂时不可用，请稍后重试。"
@@ -268,7 +268,7 @@ class AgentLoop:
             metadata_={
                 "total_steps": steps,
                 "tokens_used": self.total_tokens_used,
-                "model": self.llm._get_client("deepseek-chat") and "deepseek-chat" or "unknown",
+                "model": self.llm._get_client(settings.DEEPSEEK_MODEL) and settings.DEEPSEEK_MODEL or "unknown",
                 "finish_reason": "stop",
             },
         )
@@ -336,8 +336,14 @@ class AgentLoop:
 你可以通过以下工具访问学生的学习数据：
 {tool_descriptions}
 
+## 问题分类与路由
+你需要先判断用户问题属于哪一类：
+- **概念理解问题**：涉及原理探讨、因果关系（"为什么…"）、概念辨析（"如何理解…"、"…和…有什么区别"）、应用推理等需要深度思考的问题 → 使用 socratic_qa 工具以苏格拉底导师模式回答。调用前先通过 search_knowledge 和 get_mastery 获取上下文，注入到 context 参数中。
+- **纯知识定义/事实查询**：询问定义、公式、日期、名称等可直接回答的事实问题 → 直接回答，或使用搜索工具辅助。
+- **学习管理操作**：查笔记、查复习状态、创建复习计划等 → 使用对应的读/写工具。
+
 ## 行为准则
-1. 先理解用户的真实需求，再决定是否需要调用工具。简单问候或常识问题直接回答。
+1. 先理解用户的真实需求，判断问题类型，再决定是否需要调用工具以及调用哪个工具。简单问候或常识问题直接回答。
 2. 调用工具前，简要告知用户你在做什么（如"让我查一下你的笔记"）。
 3. 工具返回结果后，用自己的语言组织和总结，不要原样搬运工具输出。
 4. 如果工具调用失败，诚实告知用户，并建议替代方案。

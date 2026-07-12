@@ -6,6 +6,8 @@ build/
 .eggs/
 *.egg
 .env
+.env.production
+.secrets.env
 .venv/
 venv/
 env/
@@ -17,3 +19,7 @@ env/
 htmlcov/
 .coverage
 document/
+
+# Docker secrets（密钥文件不提交）
+secrets/*.txt
+!secrets/.gitkeep

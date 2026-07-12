@@ -13,6 +13,7 @@ celery_app = Celery(
     include=[
         "app.tasks.learning_tasks",
         "app.tasks.review_tasks",
+        "app.tasks.note_tasks",
     ],
 )
 
@@ -20,24 +21,24 @@ celery_app = Celery(
 @worker_process_init.connect
 def init_worker_process(**kwargs):
     """
-    Celery worker 子进程初始化时重新创建异步数据库引擎。
+    Celery worker 子进程初始化时重新创建异步资源。
 
-    ForkPoolWorker 会继承父进程的 asyncpg 引擎，但引擎内部的事件循环
-    在子进程中已损坏，导致 "Future attached to a different loop" 错误。
-    此信号在子进程 fork 后、任务执行前触发，用于重新初始化引擎。
+    ForkPoolWorker 会继承父进程的异步对象（数据库引擎、LLM客户端等），
+    但这些对象内部绑定到父进程的事件循环，在子进程中已损坏，
+    导致 "Future attached to a different loop" 错误。
+    此信号在子进程 fork 后、任务执行前触发，重新初始化所有异步资源。
     """
     import app.database as db_module
     from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
-    # 关闭父进程继承的引擎（如果存在）
+    # 关闭父进程继承的数据库引擎
     if hasattr(db_module, 'engine'):
         try:
-            # 同步关闭（在子进程中安全）
             db_module.engine.sync_engine.dispose()
         except Exception:
             pass
 
-    # 重新创建引擎和会话工厂
+    # 重新创建数据库引擎和会话工厂
     db_module.engine = create_async_engine(
         settings.DATABASE_URL,
         pool_size=settings.DATABASE_POOL_SIZE,
@@ -50,6 +51,10 @@ def init_worker_process(**kwargs):
         class_=AsyncSession,
         expire_on_commit=False,
     )
+
+    # 重置 LLM 客户端单例（其内部 AsyncOpenAI 绑定了父进程事件循环）
+    import app.ai.llm_client as llm_module
+    llm_module._llm_client = None
 
 
 def run_async(coro: Coroutine) -> Any:

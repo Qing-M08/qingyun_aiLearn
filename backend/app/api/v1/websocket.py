@@ -3,9 +3,10 @@ import uuid
 
 import redis.asyncio as redis
 import redis as sync_redis
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 import structlog
 
+from app.config import settings
 from app.core.security import decode_token
 
 logger = structlog.get_logger()
@@ -226,3 +227,69 @@ async def ws_qa_stream(websocket: WebSocket, session_id: str):
         logger.info("qa_stream_disconnected", session_id=session_id)
     finally:
         manager.disconnect(client_id)
+
+
+@router.websocket("/ws/organize-progress/{task_id}")
+async def organize_progress_ws(
+    websocket: WebSocket,
+    task_id: str,
+    token: str = Query(...),
+):
+    """AI 整理笔记进度 WebSocket（Sprint 9）
+
+    客户端连接后订阅 Redis Pub/Sub 频道 organize_progress:{task_id}，
+    实时接收 Celery 任务推送的进度消息。
+
+    消息格式:
+    {
+        "stage": "preparing" | "generating" | "complete" | "error",
+        "percent": 0-100,
+        "message": "进度描述",
+        "note_id": "成果笔记 ID（仅 complete 时）",
+        "title": "笔记标题（仅 complete 时）",
+        "word_count": 字数（仅 complete 时）,
+        "source_count": 源笔记数（仅 complete 时）,
+        "error": "错误信息（仅 error 时）"
+    }
+    """
+    # Token 验证：先 accept，验证失败再 close
+    await websocket.accept()
+    try:
+        payload = decode_token(token)
+        user_id = payload.get("sub")
+        if not user_id:
+            await websocket.close(code=4001, reason="Invalid token")
+            return
+    except Exception:
+        await websocket.close(code=4001, reason="Token verification failed")
+        return
+
+    # 订阅 Redis Pub/Sub
+    redis_client = redis.Redis.from_url(
+        settings.REDIS_URL, decode_responses=True
+    )
+    pubsub = redis_client.pubsub()
+    channel = f"organize_progress:{task_id}"
+
+    try:
+        await pubsub.subscribe(channel)
+
+        async for message in pubsub.listen():
+            if message["type"] == "message":
+                data = json.loads(message["data"])
+                await websocket.send_json(data)
+
+                # 完成或失败时关闭连接
+                if data.get("stage") in ("complete", "error"):
+                    break
+
+    except WebSocketDisconnect:
+        logger.info("organize_progress_ws_disconnected", task_id=task_id)
+    except Exception as e:
+        logger.error("organize_progress_ws_error", task_id=task_id, error=str(e))
+    finally:
+        try:
+            await pubsub.unsubscribe(channel)
+            await redis_client.close()
+        except Exception:
+            pass

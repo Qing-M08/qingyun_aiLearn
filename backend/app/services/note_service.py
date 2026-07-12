@@ -1,4 +1,5 @@
 import uuid
+import json
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -88,13 +89,47 @@ class NoteService:
             ToolSchema(
                 name="get_note_content",
                 display_name="获取笔记内容",
-                description="获取指定笔记的完整内容",
+                description="获取指定笔记的完整内容，返回 Markdown 格式文本、总行数和标签信息",
                 parameters={
                     "note_id": ToolParameter(type="string", description="笔记 ID"),
                 },
                 category="read",
                 module="note",
                 icon="file-text",
+            ),
+            ToolSchema(
+                name="edit_note",
+                display_name="编辑笔记",
+                description=(
+                    "对指定笔记进行局部编辑。支持三种操作：\n"
+                    "- insert: 在指定行号前插入新内容\n"
+                    "- replace: 替换指定行号范围的内容\n"
+                    "- delete: 删除指定行号范围的内容\n"
+                    "行号为 1-based（第一行 = 1）。修改会实时推送到用户前端编辑器。"
+                ),
+                parameters={
+                    "note_id": ToolParameter(type="string", description="要修改的笔记 ID"),
+                    "operation": ToolParameter(
+                        type="string",
+                        description="操作类型: insert(插入), replace(替换), delete(删除)",
+                        enum=["insert", "replace", "delete"],
+                    ),
+                    "start_line": ToolParameter(type="integer", description="起始行号（1-based，第一行=1）"),
+                    "end_line": ToolParameter(
+                        type="integer",
+                        description="结束行号（1-based，含。replace/delete 时必填，insert 时忽略）",
+                        required=False,
+                    ),
+                    "content": ToolParameter(
+                        type="string",
+                        description="新内容（insert/replace 时必填，delete 时忽略）",
+                        required=False,
+                        default="",
+                    ),
+                },
+                category="write",
+                module="note",
+                icon="file-edit",
             ),
         ]
 
@@ -263,6 +298,130 @@ class NoteService:
             failed=len(failed_ids),
         )
         return len(found_notes), failed_ids
+
+    # ==================== Sprint 9: AI 整理笔记 ====================
+
+    @staticmethod
+    async def organize_notes(
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        note_ids: list[uuid.UUID],
+        prompt: str,
+    ) -> str:
+        """提交笔记整理任务到 Celery
+
+        Args:
+            db: 数据库会话
+            user_id: 当前用户 ID
+            note_ids: 选中的笔记 ID 列表
+            prompt: 用户额外提示词
+
+        Returns:
+            Celery task_id
+
+        Raises:
+            BadRequestException: 笔记数量超限或笔记不存在
+        """
+        from app.tasks.note_tasks import organize_notes_task
+        from app.core.exceptions import BadRequestException
+
+        if len(note_ids) > 20:
+            raise BadRequestException("单次最多整理 20 篇笔记")
+
+        # 验证所有笔记属于当前用户
+        stmt = (
+            select(Note)
+            .where(Note.id.in_(note_ids), Note.user_id == user_id)
+            .options(selectinload(Note.tags))
+        )
+        result = await db.execute(stmt)
+        notes = result.scalars().all()
+
+        if len(notes) != len(note_ids):
+            found_ids = {n.id for n in notes}
+            missing_ids = set(note_ids) - found_ids
+            raise BadRequestException(
+                f"以下笔记不存在或无权访问: {', '.join(str(id) for id in missing_ids)}"
+            )
+
+        # 构建笔记摘要列表（传入任务）
+        notes_data = []
+        for note in notes:
+            tag_names = [t.tag.name for t in note.tags if t.tag]
+            notes_data.append({
+                "id": str(note.id),
+                "title": note.title,
+                "content": note.content or "",
+                "subject": note.subject,
+                "tags": tag_names,
+                "word_count": note.word_count,
+            })
+
+        # 提交 Celery 异步任务
+        task = organize_notes_task.delay(
+            user_id_str=str(user_id),
+            notes_data_json=json.dumps(notes_data, ensure_ascii=False),
+            prompt=prompt,
+        )
+
+        logger.info(
+            "note_organize_task_submitted",
+            user_id=str(user_id),
+            task_id=task.id,
+            note_count=len(notes),
+        )
+
+        return task.id
+
+    @staticmethod
+    async def create_organized_note(
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        title: str,
+        content: str,
+        source_note_ids: list[uuid.UUID],
+    ) -> Note:
+        """创建 AI 整理后的成果笔记
+
+        Args:
+            db: 数据库会话
+            user_id: 用户 ID
+            title: 笔记标题（由 LLM 生成）
+            content: 笔记内容（由 LLM 生成）
+            source_note_ids: 源笔记 ID 列表
+
+        Returns:
+            新创建的 Note 实例
+        """
+        word_count = calculate_word_count(content)
+
+        note = Note(
+            user_id=user_id,
+            title=title,
+            content=content,
+            word_count=word_count,
+            origin_type="ai_organized",
+            source_note_ids=source_note_ids,
+        )
+        db.add(note)
+        await db.commit()
+        await db.refresh(note)
+
+        # 同步到 Meilisearch
+        try:
+            await _sync_note_to_meilisearch(note)
+        except Exception as e:
+            logger.warning("organize_note_meilisearch_sync_failed", error=str(e))
+
+        logger.info(
+            "organized_note_created",
+            note_id=str(note.id),
+            user_id=str(user_id),
+            source_count=len(source_note_ids),
+            word_count=word_count,
+        )
+
+        return note
 
     @staticmethod
     async def search_notes(

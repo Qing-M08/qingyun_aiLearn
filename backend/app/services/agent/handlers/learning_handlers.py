@@ -10,18 +10,49 @@ from app.services.knowledge_service import KnowledgeService
 
 
 async def _tool_search_knowledge(user_id: str, query: str, subject: str | None = None, limit: int = 5) -> str:
-    """搜索知识图谱工具 handler"""
-    async with async_session_factory() as db:
-        nodes, _ = await KnowledgeService.list_nodes(
-            db, search=query, subject=subject, page=1, page_size=limit
-        )
-        if not nodes:
-            return "未找到相关知识点。"
+    """搜索知识图谱工具 handler — 优先 Meilisearch 索引，回退 PostgreSQL"""
+    results = []
 
-        lines = []
-        for n in nodes:
-            lines.append(f"🧠 {n.name}\n  学科: {n.subject}\n  描述: {(n.description or '')[:100]}")
-        return "\n\n".join(lines)
+    # 1. 优先使用 Meilisearch 索引搜索知识节点
+    try:
+        from app.services.search_service import get_meilisearch_client
+        client = get_meilisearch_client()
+        filters = []
+        if subject:
+            filters.append(f'subject = "{subject}"')
+        ms_result = client.index("knowledge_nodes").search(query, {
+            "filter": filters if filters else None,
+            "limit": limit,
+        })
+        for hit in ms_result.get("hits", []):
+            results.append({
+                "name": hit.get("name", ""),
+                "subject": hit.get("subject", ""),
+                "description": (hit.get("description", "") or "")[:100],
+            })
+    except Exception:
+        pass
+
+    # 2. Meilisearch 无结果则回退 PostgreSQL
+    if not results:
+        async with async_session_factory() as db:
+            nodes, _ = await KnowledgeService.list_nodes(
+                db, search=query, subject=subject, page=1, page_size=limit
+            )
+            for n in nodes:
+                results.append({
+                    "name": n.name,
+                    "subject": n.subject,
+                    "description": (n.description or "")[:100],
+                })
+
+    if not results:
+        return "未找到相关知识点。"
+
+    lines = []
+    for r in results:
+        lines.append(f"🧠 {r['name']}\n  学科: {r['subject']}\n  描述: {r['description']}")
+    return "\n\n".join(lines)
 
 
 async def _tool_get_mastery(user_id: str, node_name: str) -> str:

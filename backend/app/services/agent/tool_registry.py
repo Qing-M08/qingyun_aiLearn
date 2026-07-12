@@ -67,11 +67,16 @@ class ToolRegistry:
             if isinstance(result, ToolResult):
                 return result
             if isinstance(result, str):
-                return ToolResult(success=True, data=result)
+                # 粗略估算 token 数：中文约 1.5 字符/token，取 len//2
+                estimated_tokens = max(1, len(result) // 2)
+                return ToolResult(success=True, data=result, token_count=estimated_tokens)
             if isinstance(result, dict):
-                return ToolResult(success=result.get("success", True), data=str(result.get("data", "")))
+                data_str = str(result.get("data", ""))
+                estimated_tokens = max(1, len(data_str) // 2)
+                return ToolResult(success=result.get("success", True), data=data_str, token_count=estimated_tokens)
 
-            return ToolResult(success=True, data=str(result))
+            data_str = str(result)
+            return ToolResult(success=True, data=data_str, token_count=max(1, len(data_str) // 2))
         except Exception as e:
             logger.error("tool_execution_failed", tool_name=name, error=str(e))
             return ToolResult(success=False, error_message=str(e))
@@ -92,11 +97,11 @@ async def init_tool_registry() -> ToolRegistry:
     from app.services.search_service import SearchService
     from app.services.user_memory_service import UserMemoryService
 
-    from app.services.agent.handlers.note_handlers import _tool_search_notes, _tool_get_note_content
+    from app.services.agent.handlers.note_handlers import _tool_search_notes, _tool_get_note_content, _tool_edit_note
     from app.services.agent.handlers.learning_handlers import (
         _tool_search_knowledge, _tool_get_mastery, _tool_get_route_progress,
     )
-    from app.services.agent.handlers.qa_handlers import _tool_get_qa_history
+    from app.services.agent.handlers.qa_handlers import _tool_get_qa_history, _tool_socratic_qa
     from app.services.agent.handlers.review_handlers import _tool_get_review_status, _tool_schedule_review
     from app.services.agent.handlers.search_handlers import _tool_global_search, _tool_semantic_search
     from app.services.agent.handlers.memory_handlers import _tool_recall_knowledge, _tool_search_memory
@@ -104,6 +109,7 @@ async def init_tool_registry() -> ToolRegistry:
     registry.register_from_service(NoteService, {
         "search_notes": _tool_search_notes,
         "get_note_content": _tool_get_note_content,
+        "edit_note": _tool_edit_note,
     })
     registry.register_from_service(LearningService, {
         "search_knowledge": _tool_search_knowledge,
@@ -112,6 +118,7 @@ async def init_tool_registry() -> ToolRegistry:
     })
     registry.register_from_service(QAService, {
         "get_qa_history": _tool_get_qa_history,
+        "socratic_qa": _tool_socratic_qa,
     })
     registry.register_from_service(ReviewService, {
         "get_review_status": _tool_get_review_status,

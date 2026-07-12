@@ -1,11 +1,13 @@
+from app.config import settings
+
 # 模型路由配置
 MODEL_ROUTING = {
-    "default": "deepseek-chat",
-    "long_context": "deepseek-chat",
-    "chinese_education": "deepseek-chat",
-    "high_precision": "deepseek-chat",
+    "default": settings.DEEPSEEK_MODEL,
+    "long_context": settings.DEEPSEEK_MODEL,
+    "chinese_education": settings.DEEPSEEK_MODEL,
+    "high_precision": settings.DEEPSEEK_MODEL,
     "embedding": "bge-small-zh-v1.5",
-    "agent_chat": "deepseek-chat",
+    "agent_chat": settings.DEEPSEEK_MODEL,
 }
 
 

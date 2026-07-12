@@ -1,3 +1,4 @@
+import json
 import uuid
 from datetime import datetime
 
@@ -267,7 +268,8 @@ async def ws_agent_chat(
     """
     from app.ai.llm_client import get_llm_client
 
-    # 1. 认证
+    # 1. 认证：先 accept，验证失败再 close
+    await ws.accept()
     try:
         payload = decode_token(token)
         user_id = payload.get("sub")
@@ -277,8 +279,6 @@ async def ws_agent_chat(
     except Exception:
         await ws.close(code=4001, reason="认证失败")
         return
-
-    await ws.accept()
 
     # 2. 获取数据库会话和 Agent 会话
     async with async_session_factory() as db:
@@ -309,7 +309,19 @@ async def ws_agent_chat(
         # 5. 消息循环
         try:
             while True:
-                data = await ws.receive_json()
+                raw = await ws.receive_text()
+
+                # 处理客户端心跳 ping（非 JSON 文本）
+                if raw == "ping":
+                    await ws.send_text("pong")
+                    continue
+
+                try:
+                    data = json.loads(raw)
+                except json.JSONDecodeError:
+                    logger.warning("agent_ws_invalid_json", session_id=session_id, raw=raw[:100])
+                    continue
+
                 msg_type = data.get("type")
 
                 if msg_type == "message":

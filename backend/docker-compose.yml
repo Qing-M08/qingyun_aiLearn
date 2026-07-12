@@ -1,49 +1,225 @@
 version: "3.9"
 
 services:
+  # ========== 基础设施 ==========
   postgres:
     image: pgvector/pgvector:pg16
     container_name: qingyun-postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: qingyun
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DB: ${POSTGRES_DB:-qingyun}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    secrets:
+      - postgres_password
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+    networks:
+      - qingyun-net
 
   redis:
     image: redis:7-alpine
     container_name: qingyun-redis
+    # 通过 entrypoint 脚本从 secrets 文件读取密码并启动 Redis
+    entrypoint: |
+      /bin/sh -c '
+        REDIS_PASS=$$(cat /run/secrets/redis_password 2>/dev/null || echo "")
+        if [ -n "$$REDIS_PASS" ]; then
+          exec redis-server --appendonly yes --requirepass "$$REDIS_PASS"
+        else
+          exec redis-server --appendonly yes
+        fi
+      '
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redisdata:/data
+    secrets:
+      - redis_password
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli --raw incr ping 2>/dev/null || redis-cli ping"]
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+    networks:
+      - qingyun-net
 
   meilisearch:
     image: getmeili/meilisearch:v1.8
     container_name: qingyun-meilisearch
     environment:
-      MEILI_MASTER_KEY: ${MEILISEARCH_MASTER_KEY:-masterKey_dev}
-      MEILI_ENVIRONMENT: development
+      MEILI_MASTER_KEY_FILE: /run/secrets/meilisearch_master_key
+      MEILI_ENV: ${MEILI_ENV:-production}
+      MEILI_NO_ANALYTICS: "true"
     ports:
-      - "7700:7700"
+      - "${MEILISEARCH_PORT:-7700}:7700"
     volumes:
       - meilidata:/meili_data
+    secrets:
+      - meilisearch_master_key
+    restart: unless-stopped
+    networks:
+      - qingyun-net
+
+  # ========== 应用服务 ==========
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: qingyun-app
+    env_file:
+      - .env
+    environment:
+      # 服务发现地址（密码通过 /run/secrets/ 注入，config.py 动态拼接 URL）
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MEILISEARCH_URL=http://meilisearch:7700
+      - SECRETS_DIR=/run/secrets
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    secrets:
+      - postgres_password
+      - redis_password
+      - meilisearch_master_key
+      - secret_key
+      - jwt_secret_key
+      - deepseek_api_key
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - qingyun-net
+
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: qingyun-celery-worker
+    command: celery -A app.tasks.celery_app worker -l info --concurrency=4
+    env_file:
+      - .env
+    environment:
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MEILISEARCH_URL=http://meilisearch:7700
+      - SECRETS_DIR=/run/secrets
+    secrets:
+      - postgres_password
+      - redis_password
+      - meilisearch_master_key
+      - secret_key
+      - jwt_secret_key
+      - deepseek_api_key
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - qingyun-net
+
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: qingyun-celery-beat
+    command: celery -A app.tasks.celery_app beat -l info
+    env_file:
+      - .env
+    environment:
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SECRETS_DIR=/run/secrets
+    secrets:
+      - postgres_password
+      - redis_password
+      - secret_key
+      - jwt_secret_key
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - qingyun-net
+
+  # ========== 可选：数据库迁移（一次性执行） ==========
+  alembic:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: qingyun-alembic
+    command: alembic upgrade head
+    env_file:
+      - .env
+    environment:
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - SECRETS_DIR=/run/secrets
+    secrets:
+      - postgres_password
+      - redis_password
+      - secret_key
+      - jwt_secret_key
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - qingyun-net
+    profiles:
+      - migration
 
 volumes:
   pgdata:
   redisdata:
   meilidata:
+
+networks:
+  qingyun-net:
+    driver: bridge
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password.txt
+  redis_password:
+    file: ./secrets/redis_password.txt
+  meilisearch_master_key:
+    file: ./secrets/meilisearch_master_key.txt
+  secret_key:
+    file: ./secrets/secret_key.txt
+  jwt_secret_key:
+    file: ./secrets/jwt_secret_key.txt
+  deepseek_api_key:
+    file: ./secrets/deepseek_api_key.txt

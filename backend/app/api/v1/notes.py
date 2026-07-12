@@ -7,7 +7,15 @@ from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.user import User
 from app.schemas.common import MessageResponse, PaginatedResponse
-from app.schemas.note import BatchDeleteRequest, BatchDeleteResponse, NoteCreate, NoteSchema, NoteUpdate
+from app.schemas.note import (
+    BatchDeleteRequest,
+    BatchDeleteResponse,
+    NoteCreate,
+    NoteSchema,
+    NoteUpdate,
+    OrganizeNotesRequest,
+    OrganizeNotesResponse,
+)
 from app.services.note_service import NoteService
 
 router = APIRouter()
@@ -56,6 +64,30 @@ async def batch_delete_notes(
         db, body.ids, user.id
     )
     return BatchDeleteResponse(deleted_count=deleted_count, failed_ids=failed_ids)
+
+
+@router.post("/organize", response_model=OrganizeNotesResponse)
+async def organize_notes(
+    request: OrganizeNotesRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """AI 整理笔记
+
+    将选中的多篇笔记提交给 AI 进行整理，生成一篇新的成果笔记。
+    整理方式由 prompt 参数驱动（合并/摘要/对比/扩展等）。
+    异步处理，通过 WebSocket 监听进度。
+    """
+    task_id = await NoteService.organize_notes(
+        db=db,
+        user_id=user.id,
+        note_ids=request.note_ids,
+        prompt=request.prompt,
+    )
+    return OrganizeNotesResponse(
+        task_id=task_id,
+        message=f"笔记整理任务已提交，共 {len(request.note_ids)} 篇笔记",
+    )
 
 
 @router.get("/{note_id}", response_model=NoteSchema)

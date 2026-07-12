@@ -49,6 +49,8 @@ class NoteSchema(BaseModel):
     parent_id: uuid.UUID | None = None
     is_template: bool
     word_count: int
+    origin_type: str = "user"
+    source_note_ids: list[uuid.UUID] | None = None
     created_at: datetime
     updated_at: datetime
     tags: list[NoteTagSchema] = []
@@ -89,3 +91,24 @@ class BatchDeleteRequest(BaseModel):
 class BatchDeleteResponse(BaseModel):
     deleted_count: int = Field(description="实际删除的笔记数量")
     failed_ids: list[uuid.UUID] = Field(default_factory=list, description="删除失败的笔记ID（不存在或不属于当前用户）")
+
+
+# ---- Sprint 9: AI 整理笔记 ----
+
+class OrganizeNotesRequest(BaseModel):
+    """AI 整理笔记请求"""
+    note_ids: list[uuid.UUID] = Field(
+        ..., min_length=1, max_length=20,
+        description="选中的笔记 ID 列表（1-20 篇）",
+    )
+    prompt: str = Field(
+        default="",
+        max_length=2000,
+        description="额外提示词（整理方式/要求）",
+    )
+
+
+class OrganizeNotesResponse(BaseModel):
+    """AI 整理笔记响应"""
+    task_id: str = Field(..., description="Celery 任务 ID，用于 WS 进度监听")
+    message: str = Field(default="笔记整理任务已提交")

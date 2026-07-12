@@ -28,7 +28,7 @@ class LLMClient:
     def _init_clients(self):
         # DeepSeek（OpenAI兼容接口）
         if settings.DEEPSEEK_API_KEY:
-            self._clients["deepseek-v3"] = AsyncOpenAI(
+            self._clients[settings.DEEPSEEK_MODEL] = AsyncOpenAI(
                 api_key=settings.DEEPSEEK_API_KEY,
                 base_url="https://api.deepseek.com/v1",
             )
@@ -36,13 +36,13 @@ class LLMClient:
     def _get_client(self, model: str) -> AsyncOpenAI | None:
         """根据模型名称获取客户端"""
         if model.startswith("deepseek"):
-            return self._clients.get("deepseek-v3")
-        return self._clients.get("deepseek-v3")
+            return self._clients.get(settings.DEEPSEEK_MODEL)
+        return self._clients.get(settings.DEEPSEEK_MODEL)
 
     async def chat(
         self,
         messages: list[dict],
-        model: str = "deepseek-chat",
+        model: str = settings.DEEPSEEK_MODEL,
         temperature: float = 0.7,
         max_tokens: int = 4096,
         stream: bool = False,
@@ -110,7 +110,7 @@ class LLMClient:
     async def chat_stream(
         self,
         messages: list[dict],
-        model: str = "deepseek-chat",
+        model: str = settings.DEEPSEEK_MODEL,
         temperature: float = 0.7,
         max_tokens: int = 4096,
     ):

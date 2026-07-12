@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -34,6 +34,16 @@ class Note(Base):
     )
     is_template: Mapped[bool] = mapped_column(Boolean, default=False)
     word_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Sprint 9: AI 整理溯源字段
+    origin_type: Mapped[str] = mapped_column(
+        String(20), default="user", nullable=False,
+        comment="来源类型: user / ai_organized",
+    )
+    source_note_ids: Mapped[list[uuid.UUID] | None] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), nullable=True,
+        comment="AI 整理时的源笔记 ID 列表",
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow

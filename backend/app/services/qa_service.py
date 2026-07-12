@@ -37,6 +37,19 @@ class QAService:
                 module="qa",
                 icon="message",
             ),
+            ToolSchema(
+                name="socratic_qa",
+                display_name="苏格拉底答疑",
+                description="以苏格拉底导师模式回答概念理解类问题。通过提问和引导帮助学生自己发现答案，适合'为什么'、'如何理解'、原理探讨等概念性问题。Agent应在调用前先通过search_knowledge和get_mastery获取上下文，注入到context参数中",
+                parameters={
+                    "question": ToolParameter(type="string", description="学生提出的原始问题"),
+                    "topic": ToolParameter(type="string", description="问题涉及的知识点/主题名称", required=False),
+                    "context": ToolParameter(type="string", description="Agent注入的附加上下文，如知识概要、掌握度、记忆画像等", required=False),
+                },
+                category="read",
+                module="qa",
+                icon="bulb",
+            ),
         ]
 
     # ==================== 会话管理 ====================
