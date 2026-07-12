@@ -23,3 +23,9 @@ document/
 # Docker secrets（密钥文件不提交）
 secrets/*.txt
 !secrets/.gitkeep
+
+# 预下载的 Python wheel（体积大，不提交）
+wheels/
+
+# Celery Beat 调度文件（自动生成）
+celerybeat-schedule

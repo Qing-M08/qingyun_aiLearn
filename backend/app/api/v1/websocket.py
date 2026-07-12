@@ -17,7 +17,9 @@ router = APIRouter()
 # 异步 redis.asyncio 客户端会绑定到创建时的 event loop，
 # 而 Celery worker 每次任务都创建新 loop，旧 loop 关闭后连接不可用。
 # 同步客户端不依赖 event loop，可安全在任意进程/线程中使用。
-_sync_redis = sync_redis.Redis.from_url("redis://localhost:6379/3", decode_responses=True)
+_sync_redis = sync_redis.Redis.from_url(
+    settings.REDIS_URL.replace("/0", "/3"), decode_responses=True
+)
 
 
 def publish_lecture_progress(lecture_id: str, data: dict):
@@ -91,7 +93,9 @@ async def ws_lecture_progress(websocket: WebSocket, lecture_id: str):
     manager.active_connections[client_id] = websocket
 
     # 订阅 Redis Pub/Sub 频道（每次连接创建新的 async Redis 客户端，避免 event loop 冲突）
-    async_redis = redis.Redis.from_url("redis://localhost:6379/3", decode_responses=True)
+    async_redis = redis.Redis.from_url(
+        settings.REDIS_URL.replace("/0", "/3"), decode_responses=True
+    )
     pubsub = async_redis.pubsub()
     await pubsub.subscribe(f"lecture_progress:{lecture_id}")
 

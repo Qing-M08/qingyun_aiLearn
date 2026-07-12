@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   # ========== 基础设施 ==========
   postgres:
@@ -87,8 +85,13 @@ services:
       - REDIS_PORT=6379
       - MEILISEARCH_URL=http://meilisearch:7700
       - SECRETS_DIR=/run/secrets
-    ports:
-      - "${APP_PORT:-8000}:8000"
+      # CORS 允许的来源（逗号分隔，前端 EXE 使用 app:// 或 https:// 协议）
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+    expose:
+      - "8000"
+    # 调试时可取消注释下面行，绕过 Nginx 直接访问
+    # ports:
+    #   - "${APP_PORT:-8000}:8000"
     secrets:
       - postgres_password
       - redis_password
@@ -174,6 +177,32 @@ services:
     networks:
       - qingyun-net
 
+  # ========== 反向代理 ==========
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: qingyun-nginx
+    volumes:
+      # 配置模板 + 启动脚本
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf.template:ro
+      - ./nginx/entrypoint.sh:/docker-entrypoint.sh:ro
+      # SSL 证书（自签名，USE_HTTPS=true 时自动生成）
+      - nginx_ssl:/etc/nginx/ssl
+      # Nginx 日志持久化
+      - nginx_logs:/var/log/nginx
+    environment:
+      - SERVER_IP=${SERVER_IP:-}
+      - USE_HTTPS=${USE_HTTPS:-false}
+    ports:
+      - "80:80"
+      - "${HTTPS_PORT:-443}:443"
+    entrypoint: ["/bin/sh", "/docker-entrypoint.sh"]
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - qingyun-net
+
   # ========== 可选：数据库迁移（一次性执行） ==========
   alembic:
     build:
@@ -205,6 +234,8 @@ volumes:
   pgdata:
   redisdata:
   meilidata:
+  nginx_ssl:
+  nginx_logs:
 
 networks:
   qingyun-net:

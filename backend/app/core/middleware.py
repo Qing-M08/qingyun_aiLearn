@@ -1,3 +1,4 @@
+import os
 import time
 import uuid
 
@@ -7,6 +8,21 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 
 logger = structlog.get_logger()
+
+
+def _parse_cors_origins() -> list[str]:
+    """
+    解析 CORS 允许的来源列表。
+
+    优先级：CORS_ORIGINS 环境变量 > 默认 "*"
+    生产环境应配置为前端 EXE 的实际协议来源，如：
+      - Electron: "app://.,file://"
+      - Tauri:    "tauri://localhost,https://tauri.localhost"
+      - Web:      "https://your-domain.com"
+    多个来源用逗号分隔。
+    """
+    raw = os.getenv("CORS_ORIGINS", "*")
+    return [o.strip() for o in raw.split(",") if o.strip()]
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
@@ -38,9 +54,12 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
 
 def setup_middlewares(app: FastAPI):
+    origins = _parse_cors_origins()
+    logger.info("cors_configured", origins=origins if origins != ["*"] else "* (all)")
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

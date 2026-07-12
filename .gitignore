@@ -1,0 +1,14 @@
+# 编辑器临时文件
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# IDE 配置
+.idea/
+.vscode/
+*.code-workspace
+
+# 操作系统
+.directory

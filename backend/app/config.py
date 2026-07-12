@@ -6,17 +6,25 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 def _read_secret(secret_name: str, env_var: str | None = None, default: str = "") -> str:
     """
-    优先级读取敏感配置：Docker secrets 文件 > 环境变量 > 默认值。
-
-    Docker Swarm / Compose secrets 挂载在 /run/secrets/<secret_name>。
-    如果设置了 SECRETS_DIR 环境变量，则使用自定义路径。
+    优先级读取敏感配置：
+    1. Docker secrets 文件（/run/secrets/ 或 SECRETS_DIR）
+    2. 项目本地 secrets/ 目录（开发环境直连时使用）
+    3. 系统环境变量
+    4. 默认值
     """
-    secrets_dir = os.getenv("SECRETS_DIR", "/run/secrets")
-    secret_path = Path(secrets_dir) / secret_name
+    # Docker / 自定义 secrets 目录
+    secrets_dirs = [os.getenv("SECRETS_DIR", ""), "/run/secrets", str(Path(__file__).resolve().parent.parent / "secrets")]
 
-    if secret_path.is_file():
-        return secret_path.read_text(encoding="utf-8").strip()
+    for secrets_dir in secrets_dirs:
+        if not secrets_dir:
+            continue
+        # Docker 挂载时无后缀，本地文件可能是 secret.txt
+        for name in (secret_name, f"{secret_name}.txt"):
+            secret_path = Path(secrets_dir) / name
+            if secret_path.is_file():
+                return secret_path.read_text(encoding="utf-8").strip()
 
+    # 系统环境变量
     if env_var:
         env_value = os.getenv(env_var)
         if env_value:

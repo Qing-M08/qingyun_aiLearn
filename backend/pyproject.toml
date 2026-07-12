@@ -22,12 +22,7 @@ dependencies = [
 
     # AI/LLM
     "openai>=1.30",
-    "anthropic>=0.25",
-    "dashscope>=1.17",
-    "llama-index>=0.12",
-    "llama-index-embeddings-huggingface>=0.3",
     "sentence-transformers>=3.0",
-    "FlagEmbedding>=1.2",
 
     # 搜索
     "meilisearch>=0.31",

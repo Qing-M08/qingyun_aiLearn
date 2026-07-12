@@ -1,0 +1,61 @@
+# Python 虚拟环境（最大体积来源）
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.pyo
+
+# 编译产物
+dist/
+build/
+*.egg
+
+# 测试 & 覆盖率
+.pytest_cache/
+htmlcov/
+.coverage
+
+# 类型检查 & Lint
+.mypy_cache/
+.ruff_cache/
+
+# 环境变量 & 密钥
+.env
+.env.*
+*.env
+secrets/*.txt
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Docker（不需要把自己打包进去）
+docker-compose*.yml
+Dockerfile
+.dockerignore
+
+# 文档 & 脚本
+document/
+scripts/
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 日志 & 临时文件
+logs/
+*.log
+*.tmp
+
+# 模型文件（通过 pip 安装，不需要从构建上下文复制）
+*.bin
+*.safetensors
+*.onnx
