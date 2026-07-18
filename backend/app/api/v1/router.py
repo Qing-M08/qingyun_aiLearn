@@ -27,3 +27,7 @@ api_router.include_router(search.router)
 from app.api.v1 import agent
 api_router.include_router(agent.router)
 api_router.include_router(agent.ws_router)
+
+# Sprint 11 新增：笔记本
+from app.api.v1 import notebooks
+api_router.include_router(notebooks.router, prefix="/notebooks", tags=["notebooks"])

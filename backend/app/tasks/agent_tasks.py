@@ -1,6 +1,6 @@
 import uuid
 
-from app.tasks.celery_app import celery_app
+from app.tasks.celery_app import celery_app, run_async
 import structlog
 
 logger = structlog.get_logger()
@@ -13,8 +13,6 @@ def update_memory_after_conversation(session_id: str, user_id: str):
     分析对话中的工具调用记录，提取用户关注的知识点，
     更新 memory_index 中的相关知识画像条目。
     """
-    import asyncio
-
     async def _run():
         from app.database import async_session_factory
         from app.models.agent_message import AgentMessage
@@ -60,13 +58,7 @@ def update_memory_after_conversation(session_id: str, user_id: str):
             logger.info("memory_updated_after_conversation", session_id=session_id, topics_count=len(topics_seen))
 
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import nest_asyncio
-            nest_asyncio.apply()
-            asyncio.run(_run())
-        else:
-            loop.run_until_complete(_run())
+        run_async(_run())
     except Exception as e:
         logger.error("memory_update_task_failed", session_id=session_id, error=str(e))
 
@@ -77,8 +69,6 @@ def auto_generate_session_title(session_id: str, user_id: str):
     如果会话标题仍为自动生成的截断文本，
     使用 LLM 生成更有意义的标题。
     """
-    import asyncio
-
     async def _run():
         from app.database import async_session_factory
         from app.models.agent_message import AgentMessage
@@ -126,12 +116,6 @@ def auto_generate_session_title(session_id: str, user_id: str):
                 logger.warning("title_generation_failed", session_id=session_id, error=str(e))
 
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import nest_asyncio
-            nest_asyncio.apply()
-            asyncio.run(_run())
-        else:
-            loop.run_until_complete(_run())
+        run_async(_run())
     except Exception as e:
         logger.error("title_task_failed", session_id=session_id, error=str(e))

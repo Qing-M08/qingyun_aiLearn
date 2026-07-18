@@ -11,6 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 if TYPE_CHECKING:
+    from app.models.notebook import NotebookNote
     from app.models.tag import NoteTag
 
 
@@ -51,3 +52,5 @@ class Note(Base):
 
     # 关系
     tags: Mapped[list[NoteTag]] = relationship(back_populates="note", cascade="all, delete-orphan")
+    # Sprint 11: 笔记本反向关系
+    notebook_entries: Mapped[list[NotebookNote]] = relationship(back_populates="note", cascade="all, delete-orphan")

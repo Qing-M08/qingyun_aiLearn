@@ -53,16 +53,23 @@ async def create_session(
 @router.get("/sessions")
 async def list_sessions(
     status: str | None = None,
+    visibility: str | None = None,
     page: int = 1,
     page_size: int = 20,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """获取会话列表"""
+    """获取会话列表
+
+    Args:
+        visibility: 可选筛选。'visible' 只返回普通会话，'hidden' 只返回隐藏会话，
+                    不传则返回所有会话（默认行为，向后兼容）。
+    """
     service = AgentService(db)
     sessions, total = await service.list_sessions(
         user_id=str(user.id),
         status=status,
+        visibility=visibility,
         page=page,
         page_size=page_size,
     )

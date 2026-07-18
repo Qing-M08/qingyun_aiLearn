@@ -1,11 +1,16 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+import structlog
 
 from app.api.deps import get_current_user
 from app.database import get_db
+from app.models.note import Note
 from app.models.user import User
+from app.schemas.agent import OrganizeFromChatRequest, OrganizeFromChatResponse
 from app.schemas.common import MessageResponse, PaginatedResponse
 from app.schemas.note import (
     BatchDeleteRequest,
@@ -18,13 +23,15 @@ from app.schemas.note import (
 )
 from app.services.note_service import NoteService
 
+logger = structlog.get_logger()
+
 router = APIRouter()
 
 
 @router.get("", response_model=PaginatedResponse[NoteSchema])
 async def list_notes(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=200),
     subject: str | None = None,
     search: str | None = None,
     sort_by: str = Query("updated_at", pattern="^(created_at|updated_at|word_count)$"),
@@ -50,7 +57,19 @@ async def create_note(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    note = await NoteService.create_note(db, user.id, **body.model_dump(exclude_unset=True))
+    create_data = body.model_dump(exclude_unset=True)
+    notebook_id = create_data.pop("notebook_id", None)
+    note = await NoteService.create_note(db, user.id, **create_data)
+
+    # Sprint 11: 创建时可直接关联笔记本
+    if notebook_id:
+        from app.services.notebook_service import NotebookService
+        try:
+            await NotebookService.add_notes_to_notebook(db, notebook_id, user.id, [note.id])
+            logger.info("note_added_to_notebook_on_create", note_id=str(note.id), notebook_id=str(notebook_id))
+        except Exception as e:
+            logger.warning("auto_add_to_notebook_failed", note_id=str(note.id), notebook_id=str(notebook_id), error=str(e))
+
     return NoteSchema.model_validate(note)
 
 
@@ -119,3 +138,61 @@ async def delete_note(
 ):
     await NoteService.delete_note(db, note_id, user.id)
     return MessageResponse(message="deleted")
+
+
+# ---- Sprint 10: 整理到笔记 ----
+
+@router.post("/{note_id}/organize-from-chat", status_code=202)
+async def organize_from_chat(
+    note_id: uuid.UUID,
+    request: OrganizeFromChatRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """整理到笔记（从 AI 回复）
+
+    用户点击 ChatPanel 中的"整理到笔记"按钮后调用。
+    后端创建隐藏 Agent 会话，异步执行整理任务。
+    通过 WebSocket /ws/organize-from-chat-progress/{task_id} 监听进度。
+    """
+    from app.services.agent.agent_service import AgentService
+    from app.tasks.note_tasks import organize_from_chat_task
+
+    # 1. 验证笔记归属当前用户
+    try:
+        note = await NoteService.get_note(db, note_id, user.id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="笔记不存在或无权访问")
+
+    # 2. 创建隐藏 Agent 会话
+    agent_service = AgentService(db)
+    hidden_session = await agent_service.create_hidden_session(
+        user_id=str(user.id),
+        context_type="note",
+        context_id=str(note_id),
+        title=f"笔记整理 - {note.title}",
+    )
+
+    # 3. 提交 Celery 异步任务
+    task = organize_from_chat_task.delay(
+        user_id_str=str(user.id),
+        note_id_str=str(note_id),
+        agent_session_id_str=str(hidden_session.id),
+        ai_reply_content=request.ai_reply_content,
+        selected_text=request.selected_text,
+        user_prompt=request.user_prompt,
+    )
+
+    logger.info(
+        "organize_from_chat_submitted",
+        user_id=str(user.id),
+        note_id=str(note_id),
+        agent_session_id=str(hidden_session.id),
+        task_id=task.id,
+    )
+
+    return OrganizeFromChatResponse(
+        agent_session_id=str(hidden_session.id),
+        task_id=task.id,
+        message="整理任务已提交",
+    )

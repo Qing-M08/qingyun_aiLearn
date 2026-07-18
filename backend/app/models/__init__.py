@@ -5,6 +5,7 @@ from app.models.knowledge import KnowledgeEdge, KnowledgeNode, UserKnowledgeMast
 from app.models.learning import LearningRecord, LearningRoute, LearningRouteStep, Lecture, QAMessage, QASession
 from app.models.memory import MemoryFull, MemoryIndex
 from app.models.note import Note
+from app.models.notebook import Notebook, NotebookNote
 from app.models.rag import DocumentChunk
 from app.models.review import ReviewPlan
 from app.models.tag import NoteTag, Tag
@@ -17,6 +18,8 @@ __all__ = [
     "UserProfile",
     "PersonalHabitProfile",
     "Note",
+    "Notebook",
+    "NotebookNote",
     "Tag",
     "NoteTag",
     "KnowledgeNode",

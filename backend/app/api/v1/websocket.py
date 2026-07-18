@@ -297,3 +297,56 @@ async def organize_progress_ws(
             await redis_client.close()
         except Exception:
             pass
+
+
+@router.websocket("/ws/organize-from-chat/{task_id}")
+async def organize_from_chat_progress_ws(
+    websocket: WebSocket,
+    task_id: str,
+    token: str = Query(...),
+):
+    """整理到笔记进度 WebSocket（Sprint 10）
+
+    客户端连接后订阅 Redis Pub/Sub 频道 organize_from_chat_progress:{task_id}，
+    实时接收 Celery 任务推送的进度消息。
+
+    前端连接路径: /api/v1/ws/organize-from-chat/{task_id}?token={access_token}
+    """
+    # Token 验证：先 accept，验证失败再 close
+    await websocket.accept()
+    try:
+        payload = decode_token(token)
+        user_id = payload.get("sub")
+        if not user_id:
+            await websocket.close(code=4001, reason="Invalid token")
+            return
+    except Exception:
+        await websocket.close(code=4001, reason="Token verification failed")
+        return
+
+    # 订阅 Redis Pub/Sub（使用 DB 3，与 Celery 发布端一致）
+    redis_client = redis.Redis.from_url(
+        settings.REDIS_URL.replace("/0", "/3"), decode_responses=True
+    )
+    pubsub = redis_client.pubsub()
+    channel = f"organize_from_chat_progress:{task_id}"
+
+    try:
+        await pubsub.subscribe(channel)
+        async for message in pubsub.listen():
+            if message["type"] == "message":
+                data = json.loads(message["data"])
+                await websocket.send_json(data)
+                # 完成或失败时关闭连接
+                if data.get("stage") in ("complete", "error"):
+                    break
+    except WebSocketDisconnect:
+        logger.info("organize_from_chat_progress_ws_disconnected", task_id=task_id)
+    except Exception as e:
+        logger.error("organize_from_chat_progress_ws_error", task_id=task_id, error=str(e))
+    finally:
+        try:
+            await pubsub.unsubscribe(channel)
+            await redis_client.close()
+        except Exception:
+            pass

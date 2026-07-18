@@ -12,6 +12,8 @@ class NoteCreate(BaseModel):
     route_id: uuid.UUID | None = None
     node_id: uuid.UUID | None = None
     parent_id: uuid.UUID | None = None
+    # Sprint 11: 创建时可直接关联笔记本
+    notebook_id: uuid.UUID | None = None
 
 
 class NoteUpdate(BaseModel):

@@ -101,11 +101,13 @@ class NoteService:
                 name="edit_note",
                 display_name="编辑笔记",
                 description=(
-                    "对指定笔记进行局部编辑。支持三种操作：\n"
-                    "- insert: 在指定行号前插入新内容\n"
-                    "- replace: 替换指定行号范围的内容\n"
-                    "- delete: 删除指定行号范围的内容\n"
-                    "行号为 1-based（第一行 = 1）。修改会实时推送到用户前端编辑器。"
+                    "行级或列级笔记编辑。支持三种操作：\n"
+                    "- insert: 在指定行号前插入新内容（行级），或在指定行列位置前插入（列级）\n"
+                    "- replace: 替换指定行号范围的内容（行级），或替换指定列范围的内容（列级）\n"
+                    "- delete: 删除指定行号范围的内容（行级），或删除指定列范围的内容（列级）\n"
+                    "行号为 1-based（第一行 = 1），列号为 0-based（第一个字符 = 0）。\n"
+                    "当提供 start_column 时为列级精度操作，否则为行级操作。"
+                    "修改会实时推送到用户前端编辑器。"
                 ),
                 parameters={
                     "note_id": ToolParameter(type="string", description="要修改的笔记 ID"),
@@ -118,6 +120,16 @@ class NoteService:
                     "end_line": ToolParameter(
                         type="integer",
                         description="结束行号（1-based，含。replace/delete 时必填，insert 时忽略）",
+                        required=False,
+                    ),
+                    "start_column": ToolParameter(
+                        type="integer",
+                        description="起始列号（0-based，可选）。指定时为列级操作",
+                        required=False,
+                    ),
+                    "end_column": ToolParameter(
+                        type="integer",
+                        description="结束列号（0-based，可选，含）",
                         required=False,
                     ),
                     "content": ToolParameter(

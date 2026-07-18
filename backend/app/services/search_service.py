@@ -283,3 +283,53 @@ async def search_notes_meilisearch(
         },
     )
     return results
+
+
+# ---- Sprint 11: 笔记本内搜索 ----
+
+async def search_notes_by_ids(
+    query: str,
+    note_ids: list[str],
+    offset: int = 0,
+    limit: int = 20,
+) -> dict:
+    """在指定笔记 ID 范围内搜索（Meilisearch）"""
+    client = get_meilisearch_client()
+    filter_expr = f"id IN [{','.join(repr(str(nid)) for nid in note_ids)}]"
+    result = client.index("notes").search(
+        query,
+        {
+            "filter": filter_expr,
+            "offset": offset,
+            "limit": limit,
+            "attributesToHighlight": ["title", "content"],
+            "highlightPreTag": "<em>",
+            "highlightPostTag": "</em>",
+        },
+    )
+    return result
+
+
+async def search_notes_by_ids_fallback(
+    db: AsyncSession,
+    query: str,
+    note_ids: list,
+    offset: int,
+    limit: int,
+) -> list:
+    """数据库降级搜索（ILIKE）"""
+    from app.models.note import Note
+
+    result = await db.execute(
+        select(Note)
+        .where(Note.id.in_(note_ids))
+        .where(
+            or_(
+                Note.title.ilike(f"%{query}%"),
+                Note.content.ilike(f"%{query}%"),
+            )
+        )
+        .offset(offset)
+        .limit(limit)
+    )
+    return list(result.scalars().all())

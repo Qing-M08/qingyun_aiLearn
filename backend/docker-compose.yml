@@ -54,8 +54,18 @@ services:
   meilisearch:
     image: getmeili/meilisearch:v1.8
     container_name: qingyun-meilisearch
+    # 通过 entrypoint 从 secrets 文件读取 master key 并设置环境变量，
+    # 避免 MEILI_MASTER_KEY_FILE 在某些情况下读取失败导致容器反复崩溃
+    entrypoint: |
+      /bin/sh -c '
+        export MEILI_MASTER_KEY=$$(cat /run/secrets/meilisearch_master_key 2>/dev/null | tr -d "\n")
+        if [ -z "$$MEILI_MASTER_KEY" ]; then
+          echo "ERROR: meilisearch_master_key secret is empty or missing" >&2
+          exit 1
+        fi
+        exec /bin/sh -c "/usr/local/bin/entrypoint.sh --http-addr 0.0.0.0:7700"
+      '
     environment:
-      MEILI_MASTER_KEY_FILE: /run/secrets/meilisearch_master_key
       MEILI_ENV: ${MEILI_ENV:-production}
       MEILI_NO_ANALYTICS: "true"
     ports:

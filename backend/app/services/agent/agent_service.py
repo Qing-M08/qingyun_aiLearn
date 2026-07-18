@@ -30,6 +30,7 @@ class AgentService:
         context_type: str = "general",
         context_id: str | None = None,
         initial_message: str | None = None,
+        visibility: str = "visible",
     ) -> AgentSession:
         """创建 Agent 会话"""
         context_uuid = uuid.UUID(context_id) if context_id else None
@@ -37,6 +38,7 @@ class AgentService:
             user_id=uuid.UUID(user_id),
             context_type=context_type,
             context_id=context_uuid,
+            visibility=visibility,
         )
         self.db.add(session)
         await self.db.commit()
@@ -56,14 +58,41 @@ class AgentService:
 
         return session
 
+    async def create_hidden_session(
+        self,
+        user_id: str,
+        context_type: str = "general",
+        context_id: str | None = None,
+        title: str | None = None,
+    ) -> AgentSession:
+        """创建隐藏 Agent 会话（visibility='hidden'）"""
+        context_uuid = uuid.UUID(context_id) if context_id else None
+        session = AgentSession(
+            user_id=uuid.UUID(user_id),
+            context_type=context_type,
+            context_id=context_uuid,
+            visibility="hidden",
+            title=title,
+        )
+        self.db.add(session)
+        await self.db.commit()
+        await self.db.refresh(session)
+        return session
+
     async def list_sessions(
         self,
         user_id: str,
         status: str | None = None,
+        visibility: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[AgentSession], int]:
-        """获取会话列表（分页）"""
+        """获取会话列表（分页）
+
+        Args:
+            visibility: 可选过滤。'visible' 只返回普通会话，'hidden' 只返回隐藏会话，
+                        None 返回所有会话（默认行为，向后兼容）。
+        """
         query = select(AgentSession).where(AgentSession.user_id == uuid.UUID(user_id))
         count_query = select(func.count()).select_from(AgentSession).where(
             AgentSession.user_id == uuid.UUID(user_id)
@@ -72,6 +101,10 @@ class AgentService:
         if status:
             query = query.where(AgentSession.status == status)
             count_query = count_query.where(AgentSession.status == status)
+
+        if visibility:
+            query = query.where(AgentSession.visibility == visibility)
+            count_query = count_query.where(AgentSession.visibility == visibility)
 
         query = query.order_by(desc(AgentSession.updated_at))
         query = query.offset((page - 1) * page_size).limit(page_size)

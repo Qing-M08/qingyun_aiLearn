@@ -1,0 +1,35 @@
+/root/qingyun_aiLearn/backend/.venv/lib/python3.11/site-packages/celery/platforms.py:841: SecurityWarning: You're running the worker with superuser privileges: this is
+absolutely not recommended!
+
+Please specify a different user using the --uid option.
+
+User information: uid=0 euid=0 gid=0 egid=0
+
+  warnings.warn(SecurityWarning(ROOT_DISCOURAGED.format(
+ 
+ -------------- celery@hcss-ecs-53a0 v5.6.3 (recovery)
+--- ***** ----- 
+-- ******* ---- Linux-5.15.0-76-generic-x86_64-with-glibc2.35 2026-07-16 17:28:43
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         qingyun:0x7f44ed5c26d0
+- ** ---------- .> transport:   redis://:**@localhost:6379/1
+- ** ---------- .> results:     redis://:**@localhost:6379/2
+- *** --- * --- .> concurrency: 2 (prefork)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> celery           exchange=celery(direct) key=celery
+                
+
+[tasks]
+  . app.tasks.learning_tasks.generate_learning_route
+  . app.tasks.learning_tasks.generate_lecture_content_task
+  . app.tasks.note_tasks.organize_from_chat_task
+  . app.tasks.note_tasks.organize_notes_task
+  . app.tasks.review_tasks.check_review_reminders
+
+[2026-07-16 17:28:43,694: INFO/MainProcess] Connected to redis://:**@localhost:6379/1
+[2026-07-16 17:28:43,697: INFO/MainProcess] mingle: searching for neighbors
+[2026-07-16 17:28:44,756: INFO/MainProcess] mingle: all alone
+[2026-07-16 17:29:08,773: INFO/MainProcess] celery@hcss-ecs-53a0 ready.

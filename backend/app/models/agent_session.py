@@ -19,6 +19,7 @@ class AgentSession(Base):
     context_type: Mapped[str] = mapped_column(String(20), nullable=False, default="general")
     context_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    visibility: Mapped[str] = mapped_column(String(20), nullable=False, default="visible")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
@@ -32,6 +33,7 @@ class AgentSession(Base):
     __table_args__ = (
         CheckConstraint("context_type IN ('general', 'note', 'lecture', 'route')"),
         CheckConstraint("status IN ('active', 'closed')"),
+        CheckConstraint("visibility IN ('visible', 'hidden')"),
         Index("idx_agent_sessions_user_status", "user_id", "status"),
         Index("idx_agent_sessions_user_updated", "user_id", text("updated_at DESC")),
         Index(

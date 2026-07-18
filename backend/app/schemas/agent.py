@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Any
+import uuid
 
 from pydantic import BaseModel, Field
 
@@ -57,6 +58,7 @@ class AgentSessionResponse(BaseModel):
     context_type: str
     context_id: str | None = None
     status: str
+    visibility: str = "visible"
     created_at: str
     updated_at: str
 
@@ -72,6 +74,7 @@ class AgentSessionResponse(BaseModel):
                 context_type=obj.context_type,
                 context_id=str(obj.context_id) if obj.context_id else None,
                 status=obj.status,
+                visibility=getattr(obj, "visibility", "visible"),
                 created_at=obj.created_at.isoformat() + "Z" if obj.created_at else "",
                 updated_at=obj.updated_at.isoformat() + "Z" if obj.updated_at else "",
             )
@@ -151,3 +154,28 @@ class WSMessageError(BaseModel):
 class WSMessageSessionCreated(BaseModel):
     type: str = "session_created"
     data: dict[str, Any]
+
+
+# ---- Sprint 10: 整理到笔记 ----
+
+class OrganizeFromChatRequest(BaseModel):
+    """整理到笔记请求"""
+    ai_reply_content: str = Field(..., min_length=1, max_length=10000)
+    selected_text: str | None = None
+    user_prompt: str | None = Field(default=None, max_length=2000)
+
+
+class OrganizeFromChatResponse(BaseModel):
+    """整理到笔记响应"""
+    agent_session_id: str
+    task_id: str
+    message: str
+
+
+class OrganizeFromChatProgress(BaseModel):
+    """整理到笔记 WebSocket 进度"""
+    stage: str          # starting / reading_note / analyzing / editing / complete / error
+    percent: int
+    agent_session_id: str | None = None
+    operations_applied: int | None = None
+    error_message: str | None = None
